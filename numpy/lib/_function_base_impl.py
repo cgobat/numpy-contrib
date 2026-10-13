@@ -2665,6 +2665,18 @@ class vectorize:
         outputs = None
         otypes = self.otypes
         nout = len(output_core_dims)
+        # String widths cannot be known until all results have been evaluated.
+        string_dtypes = None
+        output_dtypes = otypes
+        if otypes is not None:
+            string_dtypes = [
+                _nx.dtype(otype) if otype in ("S", "U") else None
+                for otype in otypes
+            ]
+            output_dtypes = [
+                object if string_dtype is not None else otype
+                for otype, string_dtype in zip(otypes, string_dtypes)
+            ]
 
         for index in np.ndindex(*broadcast_shape):
             results = func(*(arg[index] for arg in args))
@@ -2684,8 +2696,19 @@ class vectorize:
                 for result, core_dims in zip(results, output_core_dims):
                     _update_dim_sizes(dim_sizes, result, core_dims)
 
-                outputs = _create_arrays(broadcast_shape, dim_sizes,
-                                         output_core_dims, otypes, results)
+                if otypes is None:
+                    result_dtypes = [asarray(result).dtype for result in results]
+                    string_dtypes = [
+                        dtype if dtype.char in "SU" else None
+                        for dtype in result_dtypes
+                    ]
+                    output_dtypes = [
+                        object if string_dtype is not None else None
+                        for string_dtype in string_dtypes
+                    ]
+                outputs = _create_arrays(
+                    broadcast_shape, dim_sizes, output_core_dims,
+                    output_dtypes, results)
 
             for output, result in zip(outputs, results):
                 output[index] = result
@@ -2702,7 +2725,17 @@ class vectorize:
                                  'including new output dimensions on size 0 '
                                  'inputs')
             outputs = _create_arrays(broadcast_shape, dim_sizes,
-                                     output_core_dims, otypes)
+                                     output_core_dims, output_dtypes)
+
+        if string_dtypes is not None:
+            cast_outputs = []
+            for output, string_dtype in zip(outputs, string_dtypes):
+                if string_dtype is None:
+                    cast_outputs.append(output)
+                    continue
+                dtype = string_dtype.char if output.size else string_dtype
+                cast_outputs.append(asanyarray(output, dtype=dtype))
+            outputs = tuple(cast_outputs)
 
         return outputs[0] if nout == 1 else outputs
 

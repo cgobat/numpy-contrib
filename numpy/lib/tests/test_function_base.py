@@ -1960,6 +1960,44 @@ class TestVectorize:
         assert_equal(r.dtype, np.dtype('float64'))
         assert_array_equal(r, [1, 2, 3])
 
+    def test_signature_string_otypes(self):
+        def make_10char_str(n):
+            return f"{n:<10d}"
+
+        f = vectorize(make_10char_str, signature="()->()", otypes=["U10"])
+        r = f([1, 24, 365, 4096])
+        expected = np.array(["1         ", "24        ", "365       ",
+                             "4096      "])
+        assert_equal(r.dtype, np.dtype("U10"))
+        assert_array_equal(r, expected)
+
+        f = vectorize(str, signature="()->()", otypes=["U32"])
+        r = f([[123, 99999], [-1, 0]])
+        expected = np.array([["123", "99999"], ["-1", "0"]])
+        assert_equal(r.dtype, np.dtype("U5"))
+        assert_array_equal(r, expected)
+
+        f = vectorize(lambda n: make_10char_str(n).encode(),
+                      signature="()->()", otypes=["S10"])
+        r = f([1, 24, 365, 4096])
+        expected = np.array([b"1         ", b"24        ", b"365       ",
+                             b"4096      "])
+        assert_equal(r.dtype, np.dtype("S10"))
+        assert_array_equal(r, expected)
+
+    def test_signature_string_without_otypes(self):
+        f = vectorize(str, signature="()->()")
+        r = f([1, 99999])
+        assert_equal(r.dtype, np.dtype("U5"))
+        assert_array_equal(r, ["1", "99999"])
+
+    def test_signature_empty_string_core_dimension(self):
+        f = vectorize(lambda x: np.empty(0, dtype="U5"),
+                      signature="()->(n)")
+        r = f([1, 2])
+        assert_equal(r.shape, (2, 0))
+        assert_equal(r.dtype, np.dtype("U5"))
+
     def test_signature_invalid_inputs(self):
         f = vectorize(operator.add, signature='(n),(n)->(n)')
         with assert_raises_regex(TypeError, 'wrong number of positional'):
